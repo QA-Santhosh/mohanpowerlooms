@@ -1,0 +1,195 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  SUPER_ADMIN
+  SUPERVISOR
+  WORKER
+}
+
+enum WorkerType {
+  WEAVER
+  HELPER
+  SUPERVISOR
+}
+
+enum SalaryType {
+  PER_SAREE
+  FIXED_MONTHLY
+}
+
+enum WarpStatus {
+  ACTIVE
+  COMPLETED
+  ON_HOLD
+}
+
+enum PaymentMethod {
+  CASH
+  UPI
+  BANK_TRANSFER
+}
+
+model User {
+  id          String    @id @default(uuid())
+  email       String    @unique
+  firstName   String
+  lastName    String
+  role        Role      @default(WORKER)
+  firebaseUid String    @unique
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  workerProfile Worker?
+  auditLogs    AuditLog[]
+}
+
+model Worker {
+  id            String             @id @default(uuid())
+  workerId      String             @unique // Auto-generated e.g. MPL-WRK-001
+  firstName     String
+  lastName      String
+  mobileNumber  String
+  address       String
+  aadhaarNumber String?
+  dateOfJoining DateTime
+  status        String             @default("ACTIVE") // ACTIVE, INACTIVE
+  workerType    WorkerType
+  salaryType    SalaryType
+  
+  userId        String?            @unique
+  user          User?              @relation(fields: [userId], references: [id])
+  
+  sareeTypeId   String?
+  sareeType     SareeType?         @relation(fields: [sareeTypeId], references: [id], onDelete: SetNull)
+  
+  bankAccount   WorkerBankAccount?
+  assignments   WarpAssignment[]
+  productions   ProductionEntry[]
+  payments      SalaryPayment[]
+  salaryConfig  SalaryConfiguration?
+  ledger        SalaryLedger?
+}
+
+model WorkerBankAccount {
+  id                String   @id @default(uuid())
+  workerId          String   @unique
+  worker            Worker   @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  accountHolderName String
+  bankName          String
+  accountNumber     String
+  ifscCode          String
+  upiId             String?
+}
+
+model WarpYarn {
+  id                 String           @id @default(uuid())
+  warpId             String           @unique // e.g. MPL-WRP-001
+  warpName           String
+  designName         String
+  sareeType          String
+  color              String
+  yarnQuality        String
+  startDate          DateTime
+  endDate            DateTime?
+  status             WarpStatus       @default(ACTIVE)
+  expectedSarees     Int
+  expectedWarpLength Float
+  productionTarget   Int
+  
+  assignments        WarpAssignment[]
+  productions        ProductionEntry[]
+}
+
+model WarpAssignment {
+  id         String   @id @default(uuid())
+  workerId   String
+  worker     Worker   @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  warpYarnId String
+  warpYarn   WarpYarn @relation(fields: [warpYarnId], references: [id], onDelete: Cascade)
+  assignedAt DateTime @default(now())
+  
+  @@unique([workerId, warpYarnId])
+}
+
+model ProductionEntry {
+  id                 String   @id @default(uuid())
+  productionId       String   @unique // e.g. MPL-PRD-001
+  productionDate     DateTime
+  workerId           String
+  worker             Worker   @relation(fields: [workerId], references: [id])
+  warpYarnId         String
+  warpYarn           WarpYarn @relation(fields: [warpYarnId], references: [id])
+  sareeCount         Int
+  defectiveSareeCount Int
+  netSarees          Int
+  remarks            String?
+  supervisorId       String?
+}
+
+model SalaryConfiguration {
+  id                  String     @id @default(uuid())
+  workerId            String     @unique
+  worker              Worker     @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  ratePerSaree        Float      @default(0.0)
+  fixedMonthlySalary  Float      @default(0.0)
+}
+
+model SalaryLedger {
+  id           String   @id @default(uuid())
+  workerId     String   @unique
+  worker       Worker   @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  totalEarned  Float    @default(0.0)
+  totalPaid    Float    @default(0.0)
+  totalPending Float    @default(0.0)
+  updatedAt    DateTime @updatedAt
+}
+
+model SalaryPayment {
+  id            String        @id @default(uuid())
+  transactionId String        @unique // e.g. MPL-TXN-001
+  workerId      String
+  worker        Worker        @relation(fields: [workerId], references: [id])
+  amount        Float
+  paymentDate   DateTime
+  paymentMethod PaymentMethod
+  referenceNumber String?
+  notes         String?
+  adminId       String
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String
+  module    String
+  timestamp DateTime @default(now())
+  oldValue  String?  @db.Text
+  newValue  String?  @db.Text
+}
+
+model Notification {
+  id          String   @id @default(uuid())
+  recipientId String?
+  title       String
+  message     String
+  read        Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
+
+model SareeType {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  rate      Float    // Saree weaving rate per piece
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  workers   Worker[]
+}
